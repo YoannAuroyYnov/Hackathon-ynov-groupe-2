@@ -1,5 +1,6 @@
-import { Avatar, Box, Paper, Stack, Typography } from '@mui/material'
-import { Bot, User } from 'lucide-react'
+import { useState } from 'react'
+import { Avatar, Box, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material'
+import { Bot, Check, Copy, User } from 'lucide-react'
 import type { ChatMessage } from './types'
 
 interface MessageBubbleProps {
@@ -8,6 +9,20 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
+  const isAssistant = message.role === 'assistant'
+  const [isCopied, setIsCopied] = useState(false)
+
+  async function handleCopy() {
+    if (!message.content) return
+
+    try {
+      await navigator.clipboard.writeText(message.content)
+      setIsCopied(true)
+      window.setTimeout(() => setIsCopied(false), 1500)
+    } catch {
+      setIsCopied(false)
+    }
+  }
 
   return (
     <Stack
@@ -44,20 +59,40 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         >
           {message.content}
         </Typography>
-        <Box
-          component="span"
+        <Stack
+          direction="row"
           sx={{
-            display: 'block',
             mt: 0.5,
-            fontSize: '0.7rem',
-            opacity: 0.7,
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          {new Date(message.createdAt).toLocaleTimeString('fr-FR', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </Box>
+          <Box
+            component="span"
+            sx={{
+              fontSize: '0.7rem',
+              opacity: 0.7,
+            }}
+          >
+            {new Date(message.createdAt).toLocaleTimeString('fr-FR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Box>
+
+          {isAssistant && (
+            <Tooltip title={isCopied ? 'Copié' : 'Copier la réponse'}>
+              <IconButton
+                size="small"
+                onClick={handleCopy}
+                aria-label="Copier la réponse"
+                sx={{ ml: 1 }}
+              >
+                {isCopied ? <Check size={14} /> : <Copy size={14} />}
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
       </Paper>
 
       {isUser && (
