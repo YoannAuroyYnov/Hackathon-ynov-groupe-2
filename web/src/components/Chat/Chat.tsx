@@ -9,7 +9,10 @@ import {
   Typography,
 } from '@mui/material'
 import { Send } from 'lucide-react'
-import { checkTritonHealth, sendToTriton } from '#/services/triton'
+import {
+  checkModelServerHealth,
+  sendToModelServer,
+} from '#/services/modelServer'
 import { MessageBubble } from './MessageBubble'
 import type { ChatMessage, ChatProps } from './types'
 
@@ -38,7 +41,7 @@ export function Chat({
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [serverReady, setServerReady] = useState<boolean | null>(null)
+  const [serverReady, setServerReady] = useState<boolean | null>(true)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -47,15 +50,16 @@ export function Chat({
   useEffect(() => {
     const controller = new AbortController()
     const check = async () => {
-      const ok = await checkTritonHealth(controller.signal)
+      const ok = await checkModelServerHealth(controller.signal)
       setServerReady(ok)
     }
-    check()
-    const interval = setInterval(check, 30_000)
-    return () => {
-      controller.abort()
-      clearInterval(interval)
-    }
+    // todo: to be reworked
+    // check()
+    // const interval = setInterval(check, 30_000)
+    // return () => {
+    //   controller.abort()
+    //   clearInterval(interval)
+    // }
   }, [])
 
   // Auto-scroll bas
@@ -80,7 +84,7 @@ export function Chat({
     onMessageSent?.(userMsg)
 
     try {
-      const reply = await sendToTriton(nextMessages, systemPrompt)
+      const reply = await sendToModelServer(nextMessages, systemPrompt)
       const botMsg = createMessage('assistant', reply)
       setMessages((prev) => [...prev, botMsg])
       onMessageReceived?.(botMsg)
@@ -184,7 +188,7 @@ export function Chat({
             onKeyDown={handleKeyDown}
             placeholder={
               serverReady === false
-                ? 'Serveur Triton indisponible…'
+                ? 'Serveur indisponible…'
                 : 'Écrivez votre message (Entrée pour envoyer)'
             }
             disabled={isSending || serverReady === false}
