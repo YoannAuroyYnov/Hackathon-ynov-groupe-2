@@ -99,7 +99,7 @@ export async function checkModelServerHealth(
 ): Promise<boolean> {
   if (MOCK_MODE) return true
   try {
-    const res = await fetch(`${MODEL_SERVER_URL.replace(/\/$/, '')}/api/tags`, {
+    const res = await fetch(`${MODEL_SERVER_URL}/health`, {
       method: 'GET',
       signal,
     })
@@ -134,15 +134,15 @@ export async function sendToModelServer(
     stream: false,
   }
 
-  const res = await fetch(
-    `${MODEL_SERVER_URL.replace(/\/$/, '')}/api/generate`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
+  const res = await fetch(`${MODEL_SERVER_URL}/api/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'bypass-tunnel-reminder': 'true',
     },
-  )
+    body: JSON.stringify(body),
+    signal,
+  })
 
   if (!res.ok) {
     const errorText = await res.text()
