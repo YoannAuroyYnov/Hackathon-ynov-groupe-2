@@ -5,13 +5,25 @@ backend: "python"
 # key/value structure
 parameters: {
   key: "huggingface_model",
-  value: {string_value: "microsoft/Phi-3.5-mini-instruct"}
+  value: {string_value: "microsoft/Phi-3-mini-4k-instruct"}
 }
 # The maximum number of tokens to generate in response
 # to our input
 parameters: {
   key: "max_output_length",
-  value: {string_value: "512"}
+  value: {string_value: "1024"}
+}
+parameters: {
+  key: "temperature",
+  value: {string_value: "0.7"}
+}
+parameters: {
+  key: "top_p",
+  value: {string_value: "0.9"}
+}
+parameters: {
+  key: "quantization",
+  value: {string_value: "8bit"}
 }
 
 # Triton should expect as input a single string of set
