@@ -5,7 +5,7 @@ export const Route = createFileRoute('/')({ component: Home })
 
 function Home() {
   return (
-    <div style={{ height: '100vh', width: '100%' }}>
+    <div style={{ height: '100%', width: '100%' }}>
       <Chat />
     </div>
   )

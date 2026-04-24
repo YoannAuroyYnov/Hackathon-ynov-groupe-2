@@ -101,7 +101,12 @@ export function Chat({
 
   return (
     <Stack
-      sx={{ height: '100%', width: '100%', bgcolor: 'background.default' }}
+      sx={{
+        height: '100%',
+        minHeight: 0,
+        width: '100%',
+        bgcolor: 'background.default',
+      }}
     >
       {/* Zone messages scrollable */}
       <Box
