@@ -8,7 +8,7 @@ import {
   ListItemText,
   Typography,
 } from '@mui/material'
-import { Search, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import type { ChatMessage } from '#/components/Chat/types'
 import { useServerStatus } from '#/hooks/useServerStatus'
 
@@ -191,19 +191,6 @@ export const SidebarLayout = () => {
         + Nouveau chat
       </Button>
 
-      <Button
-        color="primary"
-        startIcon={<Search size={16} />}
-        sx={{
-          justifyContent: 'flex-start',
-          borderRadius: 2,
-          textTransform: 'none',
-          fontWeight: 600,
-        }}
-      >
-        Rechercher des chats
-      </Button>
-
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
         <Typography
           variant="overline"
@@ -283,8 +270,6 @@ export const SidebarLayout = () => {
           mt: 'auto',
           pt: 1.5,
           px: 1,
-          borderTop: 1,
-          borderColor: 'divider',
           display: 'flex',
           alignItems: 'center',
           gap: 1,
