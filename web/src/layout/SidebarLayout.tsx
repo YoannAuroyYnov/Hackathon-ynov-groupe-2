@@ -10,6 +10,7 @@ import {
 } from '@mui/material'
 import { Search, Trash2 } from 'lucide-react'
 import type { ChatMessage } from '#/components/Chat/types'
+import { useServerStatus } from '#/hooks/useServerStatus'
 
 export const CHAT_SELECTED_EVENT = 'chat:selected'
 export const CHAT_MESSAGE_APPENDED_EVENT = 'chat:message-appended'
@@ -40,7 +41,7 @@ function saveChatsToStorage(chats: Array<ChatHistoryItem>): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
   } catch {
-    // quota exceeded ou accès bloqué : on ignore
+    // quota exceeded ou acces bloque : on ignore
   }
 }
 
@@ -73,13 +74,14 @@ export const SidebarLayout = () => {
     loadChatsFromStorage(),
   )
   const [activeChatId, setActiveChatId] = useState<null | string>(null)
+  const serverStatus = useServerStatus()
 
   // Persistance : sauve chaque changement en localStorage
   useEffect(() => {
     saveChatsToStorage(chats)
   }, [chats])
 
-  // Écoute les messages ajoutés par Chat pour maintenir l'historique à jour
+  // Ecoute les messages ajoutes par Chat pour maintenir l'historique a jour
   useEffect(() => {
     const handleMessageAppended = (event: Event) => {
       const detail = (
@@ -95,7 +97,7 @@ export const SidebarLayout = () => {
         )
 
         if (existing) {
-          // Met à jour le chat existant (title recalculé si pas encore défini)
+          // Met a jour le chat existant (title recalcule si pas encore defini)
           return previousChats.map((c) =>
             c.id === detail.conversationId
               ? {
@@ -111,7 +113,7 @@ export const SidebarLayout = () => {
           )
         }
 
-        // Nouveau chat créé côté Chat sans passer par la sidebar (ex: 1er message direct)
+        // Nouveau chat cree cote Chat sans passer par la sidebar (ex: 1er message direct)
         const newChat: ChatHistoryItem = {
           id: detail.conversationId,
           title: buildTitleFromMessages(detail.messages),
@@ -136,7 +138,7 @@ export const SidebarLayout = () => {
     setChats((previousChats) => previousChats.filter((c) => c.id !== chatId))
     if (activeChatId === chatId) {
       setActiveChatId(null)
-      // Vide le Chat courant si on supprime la conversation affichée
+      // Vide le Chat courant si on supprime la conversation affichee
       window.dispatchEvent(
         new CustomEvent(CHAT_SELECTED_EVENT, {
           detail: { chatId: undefined, messages: [] },
@@ -146,8 +148,8 @@ export const SidebarLayout = () => {
   }
 
   const createNewChat = () => {
-    // On ne crée PAS d'entrée dans l'historique tant qu'aucun message n'est envoyé.
-    // On pré-génère juste l'ID et on vide le Chat courant ; l'entrée sera ajoutée
+    // On ne cree PAS d'entree dans l'historique tant qu'aucun message n'est envoye.
+    // On pre-genere juste l'ID et on vide le Chat courant ; l'entree sera ajoutee
     // automatiquement par le handler CHAT_MESSAGE_APPENDED_EVENT au 1er message.
     const newId = `chat-${Date.now()}`
     setActiveChatId(newId)
@@ -274,6 +276,41 @@ export const SidebarLayout = () => {
             )
           })}
         </List>
+      </Box>
+
+      <Box
+        sx={{
+          mt: 'auto',
+          pt: 1.5,
+          px: 1,
+          borderTop: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+        }}
+      >
+        <Box
+          aria-hidden
+          sx={{
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            bgcolor:
+              serverStatus === 'up'
+                ? 'success.main'
+                : serverStatus === 'down'
+                  ? 'error.main'
+                  : 'warning.main',
+          }}
+        />
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {serverStatus === 'up'
+            ? 'Serveur en ligne'
+            : serverStatus === 'down'
+              ? 'Serveur hors ligne'
+              : 'Verification du serveur...'}
+        </Typography>
       </Box>
     </Box>
   )

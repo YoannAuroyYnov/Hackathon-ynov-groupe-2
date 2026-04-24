@@ -10,10 +10,11 @@ import {
 } from '@mui/material'
 import { Send } from 'lucide-react'
 import { sendToModelServer } from '#/services/modelServer'
+import { useServerStatus } from '#/hooks/useServerStatus'
 import {
   CHAT_MESSAGE_APPENDED_EVENT,
   CHAT_SELECTED_EVENT,
-} from '#/layout/SidebarLayout'
+} from '#/layout/SideBarLayout'
 import { MessageBubble } from './MessageBubble'
 import type { ChatMessage, ChatProps } from './types'
 
@@ -21,7 +22,10 @@ const DEFAULT_SYSTEM_PROMPT =
   'Tu es un assistant financier pour TechCorp Industries. Réponds de manière précise et professionnelle en français.'
 
 function generateConversationId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID()
   }
   return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -66,21 +70,11 @@ export function Chat({
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isServerUnavailable] = useState<boolean>(false)
+  const serverStatus = useServerStatus()
+  const isServerUnavailable = serverStatus !== 'up'
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
-
-  // Health check au montage + toutes les 30s
-  useEffect(() => {
-    // todo: to be reworked
-    // check()
-    // const interval = setInterval(check, 30_000)
-    // return () => {
-    //   controller.abort()
-    //   clearInterval(interval)
-    // }
-  }, [])
 
   // Auto-scroll bas
   useEffect(() => {
@@ -95,8 +89,7 @@ export function Chat({
     const handleChatSelected = (event: Event) => {
       const detail = (
         event as CustomEvent<
-          | { chatId?: string; messages?: Array<ChatMessage> }
-          | undefined
+          { chatId?: string; messages?: Array<ChatMessage> } | undefined
         >
       ).detail
       setMessages(detail?.messages ?? [])
@@ -114,7 +107,7 @@ export function Chat({
 
   async function handleSend() {
     const text = input.trim()
-    if (!text || isSending) return
+    if (!text || isSending || isServerUnavailable) return
 
     // Génération de l'ID au premier message de la conversation
     let cid = conversationId
@@ -241,7 +234,9 @@ export function Chat({
             onKeyDown={handleKeyDown}
             placeholder={
               isServerUnavailable
-                ? 'Serveur indisponible…'
+                ? serverStatus === 'checking'
+                  ? 'Vérification du serveur...'
+                  : 'Serveur indisponible...'
                 : 'Écrivez votre message (Entrée pour envoyer)'
             }
             disabled={isSending || isServerUnavailable}

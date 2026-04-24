@@ -101,9 +101,16 @@ export async function checkModelServerHealth(
   try {
     const res = await fetch(`${MODEL_SERVER_URL}/health`, {
       method: 'GET',
+      headers: {
+        'bypass-tunnel-reminder': 'true',
+      },
       signal,
     })
-    return res.ok
+
+    if (!res.ok) return false
+
+    const json = (await res.json()) as { status?: string }
+    return json.status === 'ok'
   } catch {
     return false
   }
