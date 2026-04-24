@@ -9,10 +9,8 @@ import {
   Typography,
 } from '@mui/material'
 import { Send } from 'lucide-react'
-import {
-  checkModelServerHealth,
-  sendToModelServer,
-} from '#/services/modelServer'
+import { sendToModelServer } from '#/services/modelServer'
+import { CHAT_SELECTED_EVENT } from '#/layout/SidebarLayout'
 import { MessageBubble } from './MessageBubble'
 import type { ChatMessage, ChatProps } from './types'
 
@@ -41,18 +39,13 @@ export function Chat({
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [serverReady, setServerReady] = useState<boolean | null>(true)
+  const [isServerUnavailable] = useState<boolean>(false)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   // Health check au montage + toutes les 30s
   useEffect(() => {
-    const controller = new AbortController()
-    const check = async () => {
-      const ok = await checkModelServerHealth(controller.signal)
-      setServerReady(ok)
-    }
     // todo: to be reworked
     // check()
     // const interval = setInterval(check, 30_000)
@@ -69,6 +62,22 @@ export function Chat({
       behavior: 'smooth',
     })
   }, [messages, isSending])
+
+  // Recharge les messages quand l'utilisateur change de conversation.
+  useEffect(() => {
+    const handleChatSelected = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ messages?: Array<ChatMessage> } | undefined>
+      ).detail
+      setMessages(detail?.messages ?? [])
+      setError(null)
+    }
+
+    window.addEventListener(CHAT_SELECTED_EVENT, handleChatSelected)
+    return () => {
+      window.removeEventListener(CHAT_SELECTED_EVENT, handleChatSelected)
+    }
+  }, [])
 
   async function handleSend() {
     const text = input.trim()
@@ -187,11 +196,11 @@ export function Chat({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              serverReady === false
+              isServerUnavailable
                 ? 'Serveur indisponible…'
                 : 'Écrivez votre message (Entrée pour envoyer)'
             }
-            disabled={isSending || serverReady === false}
+            disabled={isSending || isServerUnavailable}
             fullWidth
             multiline
             maxRows={6}
@@ -201,7 +210,7 @@ export function Chat({
           <IconButton
             color="primary"
             onClick={handleSend}
-            disabled={!input.trim() || isSending || serverReady === false}
+            disabled={!input.trim() || isSending || isServerUnavailable}
             sx={{ mb: 0.5 }}
           >
             <Send size={20} />
