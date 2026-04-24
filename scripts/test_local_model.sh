@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODEL_NAME="${MODEL_NAME:-phi35-financial}"
+MODEL_NAME="${MODEL_NAME:-phi35-financial-q8}"
 MODELFILE="${MODELFILE:-$ROOT_DIR/ollama_server/Modelfile}"
 PROMPT="${1:-Give me a short risk analysis for a company with high debt and declining revenue.}"
 

@@ -32,7 +32,25 @@ import json
 import numpy as np
 import torch
 import transformers
+from transformers import BitsAndBytesConfig
 import triton_python_backend_utils as pb_utils
+
+
+def normalize_rope_scaling(config):
+    rope_scaling = getattr(config, "rope_scaling", None)
+    if not isinstance(rope_scaling, dict):
+        return config
+
+    fixed = dict(rope_scaling)
+    if "type" not in fixed and "rope_type" in fixed:
+        fixed["type"] = fixed["rope_type"]
+
+    if fixed.get("type") == "default":
+        config.rope_scaling = None
+        return config
+
+    config.rope_scaling = fixed
+    return config
 
 
 class TritonPythonModel:
@@ -40,8 +58,9 @@ class TritonPythonModel:
         self.logger = pb_utils.Logger
         self.model_config = json.loads(args["model_config"])
         self.model_params = self.model_config.get("parameters", {})
-        default_hf_model = "microsoft/Phi-3.5-mini-instruct"
+        default_hf_model = "microsoft/Phi-3-mini-4k-instruct"
         default_max_gen_length = "512"
+        default_quantization = "8bit"
         hf_model = self.model_params.get("huggingface_model", {}).get(
             "string_value", default_hf_model
         )
@@ -54,21 +73,79 @@ class TritonPythonModel:
                 "string_value", default_max_gen_length
             )
         )
+        self.quantization = self.model_params.get("quantization", {}).get(
+            "string_value", default_quantization
+        ).lower()
+        self.temperature = float(
+            self.model_params.get("temperature", {}).get("string_value", "0.7")
+        )
+        self.top_p = float(
+            self.model_params.get("top_p", {}).get("string_value", "0.9")
+        )
+        # LoRA adapters disabled in this build; serving base model only.
 
         self.logger.log_info(f"Max output length: {self.max_output_length}")
+        self.logger.log_info(f"Quantization mode: {self.quantization}")
+        self.logger.log_info(f"LoRA adapter path: {self.lora_adapter_path}")
         self.logger.log_info(f"Loading HuggingFace model: {hf_model}...")
         # Assume tokenizer available for same model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
             hf_model, token=private_repo_token
         )
 
+        model_kwargs = {
+            "token": private_repo_token,
+            "device_map": "auto" if torch.cuda.is_available() else None,
+            "trust_remote_code": True,
+            "low_cpu_mem_usage": True,
+        }
+
+        if torch.cuda.is_available():
+            model_kwargs["torch_dtype"] = torch.float16
+            if self.quantization == "4bit":
+                model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                )
+            elif self.quantization == "8bit":
+                model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_8bit=True
+                )
+            elif self.quantization not in ("none", "fp16"):
+                self.logger.log_warn(
+                    f"Unknown quantization '{self.quantization}', falling back to fp16"
+                )
+        else:
+            model_kwargs["torch_dtype"] = torch.float32
+            if self.quantization in ("4bit", "8bit"):
+                self.logger.log_warn(
+                    "Requested quantization requires CUDA; falling back to CPU float32"
+                )
+
+        model_config = normalize_rope_scaling(
+            transformers.AutoConfig.from_pretrained(
+                hf_model,
+                token=private_repo_token,
+                trust_remote_code=True,
+            )
+        )
+        if not torch.cuda.is_available():
+            model_config._attn_implementation = "eager"
+
+        self.model = transformers.AutoModelForCausalLM.from_pretrained(
+            hf_model,
+            config=model_config,
+            **model_kwargs,
+        )
+
+        self.logger.log_info("Serving base model only (LoRA support removed).")
+
         self.pipeline = transformers.pipeline(
             "text-generation",
-            model=hf_model,
-            torch_dtype=torch.float16,
+            model=self.model,
             tokenizer=self.tokenizer,
-            device_map="auto",
-            token=private_repo_token,
         )
 
     def execute(self, requests):
@@ -88,9 +165,12 @@ class TritonPythonModel:
             prompt,
             do_sample=True,
             top_k=10,
+            top_p=self.top_p,
+            temperature=self.temperature,
+            use_cache=False,
             num_return_sequences=1,
             eos_token_id=self.tokenizer.eos_token_id,
-            max_length=self.max_output_length,
+            max_new_tokens=self.max_output_length,
         )
 
         output_tensors = []
