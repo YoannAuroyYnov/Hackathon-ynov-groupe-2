@@ -1,16 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Box,
   Button,
+  IconButton,
   List,
   ListItemButton,
   ListItemText,
   Typography,
 } from '@mui/material'
-import { Search } from 'lucide-react'
+import { Search, Trash2 } from 'lucide-react'
 import type { ChatMessage } from '#/components/Chat/types'
 
 export const CHAT_SELECTED_EVENT = 'chat:selected'
+export const CHAT_MESSAGE_APPENDED_EVENT = 'chat:message-appended'
+
+const STORAGE_KEY = 'techcorp.chats'
 
 export type ChatHistoryItem = {
   id: string
@@ -122,6 +126,41 @@ export const initialChats: ChatHistoryItem[] = [
   },
 ]
 
+function loadChatsFromStorage(): Array<ChatHistoryItem> {
+  if (typeof window === 'undefined') return initialChats
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return initialChats
+    const parsed = JSON.parse(raw) as Array<ChatHistoryItem>
+    if (!Array.isArray(parsed)) return initialChats
+    return parsed
+  } catch {
+    return initialChats
+  }
+}
+
+function saveChatsToStorage(chats: Array<ChatHistoryItem>): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
+  } catch {
+    // quota exceeded ou accès bloqué : on ignore
+  }
+}
+
+function buildTitleFromMessages(messages: Array<ChatMessage>): string {
+  const firstUser = messages.find((m) => m.role === 'user')
+  if (!firstUser) {
+    const now = new Date()
+    return `Nouveau chat ${now.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`
+  }
+  const snippet = firstUser.content.trim().slice(0, 40)
+  return snippet.length < firstUser.content.length ? `${snippet}…` : snippet
+}
+
 function emitChatSelected(chat: ChatHistoryItem): void {
   window.dispatchEvent(
     new CustomEvent(CHAT_SELECTED_EVENT, {
@@ -134,23 +173,90 @@ function emitChatSelected(chat: ChatHistoryItem): void {
 }
 
 export const SidebarLayout = () => {
-  const [chats, setChats] = useState<Array<ChatHistoryItem>>(initialChats)
+  const [chats, setChats] = useState<Array<ChatHistoryItem>>(() =>
+    loadChatsFromStorage(),
+  )
   const [activeChatId, setActiveChatId] = useState<null | string>(null)
 
-  const createNewChat = () => {
-    const now = new Date()
-    const newChat: ChatHistoryItem = {
-      id: `chat-${now.getTime()}`,
-      title: `Nouveau chat ${now.toLocaleTimeString('fr-FR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`,
-      messages: [],
+  // Persistance : sauve chaque changement en localStorage
+  useEffect(() => {
+    saveChatsToStorage(chats)
+  }, [chats])
+
+  // Écoute les messages ajoutés par Chat pour maintenir l'historique à jour
+  useEffect(() => {
+    const handleMessageAppended = (event: Event) => {
+      const detail = (
+        event as CustomEvent<
+          | { conversationId: string; messages: Array<ChatMessage> }
+          | undefined
+        >
+      ).detail
+      if (!detail?.conversationId) return
+
+      setChats((previousChats) => {
+        const existing = previousChats.find(
+          (c) => c.id === detail.conversationId,
+        )
+
+        if (existing) {
+          // Met à jour le chat existant (title recalculé si pas encore défini)
+          return previousChats.map((c) =>
+            c.id === detail.conversationId
+              ? {
+                  ...c,
+                  messages: detail.messages,
+                  title:
+                    c.title.startsWith('Nouveau chat') ||
+                    c.title === 'Sans titre'
+                      ? buildTitleFromMessages(detail.messages)
+                      : c.title,
+                }
+              : c,
+          )
+        }
+
+        // Nouveau chat créé côté Chat sans passer par la sidebar (ex: 1er message direct)
+        const newChat: ChatHistoryItem = {
+          id: detail.conversationId,
+          title: buildTitleFromMessages(detail.messages),
+          messages: detail.messages,
+        }
+        return [newChat, ...previousChats]
+      })
+
+      setActiveChatId(detail.conversationId)
     }
 
-    setChats((previousChats) => [newChat, ...previousChats])
-    setActiveChatId(newChat.id)
-    emitChatSelected(newChat)
+    window.addEventListener(CHAT_MESSAGE_APPENDED_EVENT, handleMessageAppended)
+    return () => {
+      window.removeEventListener(
+        CHAT_MESSAGE_APPENDED_EVENT,
+        handleMessageAppended,
+      )
+    }
+  }, [])
+
+  const deleteChat = (chatId: string) => {
+    setChats((previousChats) => previousChats.filter((c) => c.id !== chatId))
+    if (activeChatId === chatId) {
+      setActiveChatId(null)
+      // Vide le Chat courant si on supprime la conversation affichée
+      window.dispatchEvent(
+        new CustomEvent(CHAT_SELECTED_EVENT, {
+          detail: { chatId: undefined, messages: [] },
+        }),
+      )
+    }
+  }
+
+  const createNewChat = () => {
+    // On ne crée PAS d'entrée dans l'historique tant qu'aucun message n'est envoyé.
+    // On pré-génère juste l'ID et on vide le Chat courant ; l'entrée sera ajoutée
+    // automatiquement par le handler CHAT_MESSAGE_APPENDED_EVENT au 1er message.
+    const newId = `chat-${Date.now()}`
+    setActiveChatId(newId)
+    emitChatSelected({ id: newId, title: '', messages: [] })
   }
 
   return (
@@ -231,13 +337,16 @@ export const SidebarLayout = () => {
                   mt: 0.5,
                   color: isActive ? 'text.primary' : 'text.secondary',
                   bgcolor: isActive ? 'action.selected' : 'transparent',
+                  pr: 1,
                   '&:hover': { bgcolor: 'action.hover' },
+                  '&:hover .delete-btn': { opacity: 1 },
                   '&.Mui-selected': {
                     bgcolor: 'action.selected',
                   },
                   '&.Mui-selected:hover': {
                     bgcolor: 'action.selected',
                   },
+                  '&.Mui-selected .delete-btn': { opacity: 1 },
                 }}
               >
                 <ListItemText
@@ -248,6 +357,24 @@ export const SidebarLayout = () => {
                     },
                   }}
                 />
+                <IconButton
+                  className="delete-btn"
+                  size="small"
+                  aria-label="Supprimer la conversation"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteChat(chat.id)
+                  }}
+                  sx={{
+                    opacity: 0,
+                    transition: 'opacity 0.15s',
+                    ml: 1,
+                    color: 'text.secondary',
+                    '&:hover': { color: 'error.main' },
+                  }}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
               </ListItemButton>
             )
           })}

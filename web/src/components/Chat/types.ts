@@ -2,6 +2,7 @@ export type Role = 'user' | 'assistant' | 'system'
 
 export interface ChatMessage {
   id: string
+  conversationId?: string
   role: Role
   content: string
   createdAt: number
@@ -16,4 +17,6 @@ export interface ChatProps {
   onMessageSent?: (message: ChatMessage) => void
   /** Callback à chaque réponse reçue */
   onMessageReceived?: (message: ChatMessage) => void
+  /** Déclenché quand une nouvelle conversation démarre (au 1er message envoyé) */
+  onConversationStart?: (conversationId: string) => void
 }

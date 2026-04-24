@@ -10,19 +10,42 @@ import {
 } from '@mui/material'
 import { Send } from 'lucide-react'
 import { sendToModelServer } from '#/services/modelServer'
-import { CHAT_SELECTED_EVENT } from '#/layout/SidebarLayout'
+import {
+  CHAT_MESSAGE_APPENDED_EVENT,
+  CHAT_SELECTED_EVENT,
+} from '#/layout/SidebarLayout'
 import { MessageBubble } from './MessageBubble'
 import type { ChatMessage, ChatProps } from './types'
 
 const DEFAULT_SYSTEM_PROMPT =
   'Tu es un assistant financier pour TechCorp Industries. Réponds de manière précise et professionnelle en français.'
 
+function generateConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function emitMessageAppended(
+  conversationId: string,
+  messages: Array<ChatMessage>,
+): void {
+  window.dispatchEvent(
+    new CustomEvent(CHAT_MESSAGE_APPENDED_EVENT, {
+      detail: { conversationId, messages },
+    }),
+  )
+}
+
 function createMessage(
   role: ChatMessage['role'],
   content: string,
+  conversationId: string,
 ): ChatMessage {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    conversationId,
     role,
     content,
     createdAt: Date.now(),
@@ -34,8 +57,12 @@ export function Chat({
   initialMessages = [],
   onMessageSent,
   onMessageReceived,
+  onConversationStart,
 }: ChatProps) {
   const [messages, setMessages] = useState<Array<ChatMessage>>(initialMessages)
+  const [conversationId, setConversationId] = useState<string | null>(
+    initialMessages[0]?.conversationId ?? null,
+  )
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,9 +94,15 @@ export function Chat({
   useEffect(() => {
     const handleChatSelected = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ messages?: Array<ChatMessage> } | undefined>
+        event as CustomEvent<
+          | { chatId?: string; messages?: Array<ChatMessage> }
+          | undefined
+        >
       ).detail
       setMessages(detail?.messages ?? [])
+      setConversationId(
+        detail?.chatId ?? detail?.messages?.[0]?.conversationId ?? null,
+      )
       setError(null)
     }
 
@@ -83,7 +116,15 @@ export function Chat({
     const text = input.trim()
     if (!text || isSending) return
 
-    const userMsg = createMessage('user', text)
+    // Génération de l'ID au premier message de la conversation
+    let cid = conversationId
+    if (!cid) {
+      cid = generateConversationId()
+      setConversationId(cid)
+      onConversationStart?.(cid)
+    }
+
+    const userMsg = createMessage('user', text, cid)
     const nextMessages = [...messages, userMsg]
 
     setMessages(nextMessages)
@@ -91,12 +132,15 @@ export function Chat({
     setIsSending(true)
     setError(null)
     onMessageSent?.(userMsg)
+    emitMessageAppended(cid, nextMessages)
 
     try {
       const reply = await sendToModelServer(nextMessages, systemPrompt)
-      const botMsg = createMessage('assistant', reply)
-      setMessages((prev) => [...prev, botMsg])
+      const botMsg = createMessage('assistant', reply, cid)
+      const messagesWithBot = [...nextMessages, botMsg]
+      setMessages(messagesWithBot)
       onMessageReceived?.(botMsg)
+      emitMessageAppended(cid, messagesWithBot)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue')
     } finally {
